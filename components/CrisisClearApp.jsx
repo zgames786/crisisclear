@@ -1,5 +1,7 @@
+'use client'
+
 import { useState, useEffect, useRef } from 'react'
-import './App.css'
+import { usePathname, useRouter } from 'next/navigation'
 
 const STORAGE_KEYS = {
   checklist: 'crisisclear-checklist',
@@ -11,12 +13,36 @@ const DEFAULT_SETTINGS = {
   theme: 'light',
   fontSize: 'medium',
   clarityPreference: 'simple',
+  language: 'en',
 }
+
+const LANGUAGE_OPTIONS = [
+  { value: 'en', label: 'English', flag: '🇺🇸' },
+  { value: 'es', label: 'Español', flag: '🇪🇸' },
+  { value: 'fr', label: 'Français', flag: '🇫🇷' },
+  { value: 'zh', label: '中文', flag: '🇨🇳' },
+  { value: 'ar', label: 'العربية', flag: '🇸🇦' },
+  { value: 'hi', label: 'हिन्दी', flag: '🇮🇳' },
+  { value: 'pt', label: 'Português', flag: '🇧🇷' },
+  { value: 'ru', label: 'Русский', flag: '🇷🇺' },
+  { value: 'ko', label: '한국어', flag: '🇰🇷' },
+  { value: 'ja', label: '日本語', flag: '🇯🇵' },
+  { value: 'de', label: 'Deutsch', flag: '🇩🇪' },
+]
 
 const FONT_SIZE_OPTIONS = [
   { value: 'small', label: 'Small' },
   { value: 'medium', label: 'Medium' },
   { value: 'large', label: 'Large' },
+]
+
+const THEME_OPTIONS = [
+  { value: 'light', label: 'Light', emoji: '☀️' },
+  { value: 'dark', label: 'Dark', emoji: '🌙' },
+  { value: 'sakura', label: 'Sakura', emoji: '🌸' },
+  { value: 'ghibli', label: 'Spirited', emoji: '🍃' },
+  { value: 'tokyo', label: 'Tokyo Neon', emoji: '🌃' },
+  { value: 'evangelion', label: 'Mecha', emoji: '🤖' },
 ]
 
 const CLARITY_PREFERENCE_OPTIONS = [
@@ -418,6 +444,7 @@ const URGENCY_META = {
 }
 
 function loadStorage(key, fallback) {
+  if (typeof window === 'undefined') return fallback
   try {
     const raw = localStorage.getItem(key)
     return raw ? JSON.parse(raw) : fallback
@@ -669,6 +696,56 @@ function shortenMeaning(text) {
   return String(text).match(/^[^.!?]+[.!?]/)?.[0] || String(text)
 }
 
+function VoiceButton({ onTranscript, disabled = false }) {
+  const [listening, setListening] = useState(false)
+  const [supported] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return !!(window.SpeechRecognition || window.webkitSpeechRecognition)
+  })
+  const recognitionRef = useRef(null)
+
+  function toggle() {
+    if (listening) {
+      recognitionRef.current?.stop()
+      setListening(false)
+      return
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    const rec = new SpeechRecognition()
+    rec.continuous = false
+    rec.interimResults = false
+    rec.lang = document.documentElement.lang || navigator.language || 'en-US'
+
+    rec.onresult = (e) => {
+      const transcript = e.results[0]?.[0]?.transcript || ''
+      if (transcript) onTranscript(transcript)
+    }
+    rec.onerror = () => setListening(false)
+    rec.onend = () => setListening(false)
+
+    recognitionRef.current = rec
+    rec.start()
+    setListening(true)
+  }
+
+  if (!supported) return null
+
+  return (
+    <button
+      type="button"
+      className={`voice-btn${listening ? ' listening' : ''}`}
+      onClick={toggle}
+      disabled={disabled}
+      aria-label={listening ? 'Stop voice input' : 'Start voice input'}
+      title={listening ? 'Tap to stop' : 'Speak your notice'}
+    >
+      <span aria-hidden="true">{listening ? '⏹' : '🎙️'}</span>
+      {listening && <span className="voice-pulse" aria-hidden="true" />}
+    </button>
+  )
+}
+
 function applyClarityPreference(response, preference) {
   const normalized = normalizeAnalysis(response)
   if (preference === 'detailed') return normalized
@@ -858,26 +935,26 @@ function SettingsScreen({ settings, onChange }) {
         <section className="settings-group card">
           <h2 className="settings-group-title">Appearance</h2>
 
-          <div className="settings-row">
+          <div className="settings-row settings-row-stack">
             <div className="settings-row-info">
               <span className="settings-label">Theme</span>
-              <span className="settings-hint">Switch between light and dark mode.</span>
+              <span className="settings-hint">Pick a look — including anime-inspired themes.</span>
             </div>
-            <div className="theme-toggle" role="group" aria-label="Theme">
-              <button
-                type="button"
-                className={`theme-toggle-btn ${settings.theme === 'light' ? 'active' : ''}`}
-                onClick={() => update('theme', 'light')}
-              >
-                ☀️ Light
-              </button>
-              <button
-                type="button"
-                className={`theme-toggle-btn ${settings.theme === 'dark' ? 'active' : ''}`}
-                onClick={() => update('theme', 'dark')}
-              >
-                🌙 Dark
-              </button>
+            <div className="theme-grid" role="group" aria-label="Theme">
+              {THEME_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className={`theme-card theme-card-${opt.value} ${settings.theme === opt.value ? 'active' : ''}`}
+                  onClick={() => update('theme', opt.value)}
+                  aria-pressed={settings.theme === opt.value}
+                >
+                  <span className="theme-card-swatch" aria-hidden="true" />
+                  <span className="theme-card-label">
+                    <span aria-hidden="true">{opt.emoji}</span> {opt.label}
+                  </span>
+                </button>
+              ))}
             </div>
           </div>
 
@@ -896,6 +973,33 @@ function SettingsScreen({ settings, onChange }) {
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
+          </div>
+        </section>
+
+        <section className="settings-group card">
+          <h2 className="settings-group-title">Language</h2>
+
+          <div className="settings-row settings-row-stack">
+            <div className="settings-row-info">
+              <label className="settings-label" htmlFor="language-select">Response language</label>
+              <span className="settings-hint">
+                CrisisClear will analyse notices and reply in your chosen language.
+              </span>
+            </div>
+            <div className="language-grid">
+              {LANGUAGE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className={`language-option ${settings.language === opt.value ? 'active' : ''}`}
+                  onClick={() => update('language', opt.value)}
+                  aria-pressed={settings.language === opt.value}
+                >
+                  <span className="language-flag" aria-hidden="true">{opt.flag}</span>
+                  <span className="language-label">{opt.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </section>
 
@@ -1152,6 +1256,12 @@ function ChatMessage({
   )
 }
 
+const QUICK_ACTIONS = [
+  { label: '✍️ Draft a reply', prompt: 'Draft a short, polite reply I can send in response to this notice.' },
+  { label: '📞 Call script', prompt: 'Write a simple phone call script I can use to ask about this notice.' },
+  { label: '🔁 Explain more simply', prompt: 'Explain this notice again in the simplest possible terms.' },
+]
+
 function ChatThread({
   thread,
   clarityPreference,
@@ -1165,17 +1275,61 @@ function ChatThread({
   onDismissError,
 }) {
   const [chatInput, setChatInput] = useState('')
+  const [suggestions, setSuggestions] = useState([])
   const messagesEndRef = useRef(null)
   const riskFlags = detectRiskFlags(thread.originalNotice)
+
+  const lastMessage = thread.messages[thread.messages.length - 1]
+  const lastIsAssistant = Boolean(lastMessage && lastMessage.role === 'assistant')
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [thread.messages, isProcessing])
 
+  useEffect(() => {
+    if (isProcessing) return
+    const last = thread.messages[thread.messages.length - 1]
+    if (!last || last.role !== 'assistant') {
+      setSuggestions([])
+      return
+    }
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/suggest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            originalNotice: thread.originalNotice,
+            conversationMessages: messagesForApi(thread.messages),
+          }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!cancelled) {
+          setSuggestions(Array.isArray(data.suggestions) ? data.suggestions : [])
+        }
+      } catch {
+        if (!cancelled) setSuggestions([])
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [thread.id, thread.messages.length, isProcessing])
+
+  function send(text) {
+    if (!text.trim() || isProcessing) return
+    setSuggestions([])
+    onSendMessage(text.trim())
+  }
+
   function handleSubmit(e) {
     e.preventDefault()
     if (!chatInput.trim() || isProcessing) return
-    onSendMessage(chatInput.trim())
+    send(chatInput.trim())
     setChatInput('')
   }
 
@@ -1232,6 +1386,38 @@ function ChatThread({
           </div>
         )}
 
+        {!isProcessing && lastIsAssistant && suggestions.length > 0 && (
+          <div className="chat-suggestions">
+            <span className="chat-suggestions-label" aria-hidden="true">✨ Suggested</span>
+            <div className="chat-suggestions-row">
+              {suggestions.map((s, i) => (
+                <button
+                  key={`${i}-${s}`}
+                  type="button"
+                  className="chat-suggestion"
+                  onClick={() => send(s)}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="chat-quick-actions" role="group" aria-label="AI quick actions">
+          {QUICK_ACTIONS.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              className="chat-quick-btn"
+              onClick={() => send(action.prompt)}
+              disabled={isProcessing}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+
         <form className="chat-composer" onSubmit={handleSubmit}>
           <label className="sr-only" htmlFor={`chat-input-${thread.id}`}>
             Continue the conversation
@@ -1251,6 +1437,10 @@ function ChatThread({
             rows={2}
             disabled={isProcessing}
           />
+          <VoiceButton
+            onTranscript={(t) => setChatInput((prev) => prev ? `${prev} ${t}` : t)}
+            disabled={isProcessing}
+          />
           <button type="submit" className="chat-send-btn" disabled={!chatInput.trim() || isProcessing}>
             Send
           </button>
@@ -1260,48 +1450,76 @@ function ChatThread({
   )
 }
 
+function resolveActiveView(pathname) {
+  if (pathname === '/checklist') return 'checklist'
+  if (pathname === '/settings') return 'settings'
+  if (pathname?.startsWith('/cases/')) {
+    return pathname.slice('/cases/'.length)
+  }
+  return 'main'
+}
+
 function App() {
-  const [activeView, setActiveView] = useState('main')
+  const pathname = usePathname()
+  const router = useRouter()
+  const activeView = resolveActiveView(pathname)
   const [noticeText, setNoticeText] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [clarityMode, setClarityMode] = useState('very-simple')
   const [copied, setCopied] = useState(false)
-  const [checklistItems, setChecklistItems] = useState(() =>
-    loadStorage(STORAGE_KEYS.checklist, [])
-  )
-  const [savedNotices, setSavedNotices] = useState(() =>
-    loadStorage(STORAGE_KEYS.savedNotices, []).map(migrateNoticeToThread)
-  )
-  const [settings, setSettings] = useState(() => {
-    const loaded = loadStorage(STORAGE_KEYS.settings, DEFAULT_SETTINGS)
-    if (loaded.clarityPreference === 'step-by-step') {
-      return { ...loaded, clarityPreference: 'detailed' }
-    }
-    return loaded
-  })
+  const [checklistItems, setChecklistItems] = useState([])
+  const [savedNotices, setSavedNotices] = useState([])
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS)
+  const [hydrated, setHydrated] = useState(false)
   const [toast, setToast] = useState('')
+  const [prioritizing, setPrioritizing] = useState(false)
+  const [briefing, setBriefing] = useState(null)
+  const [loadingBriefing, setLoadingBriefing] = useState(false)
+  const [briefingError, setBriefingError] = useState(null)
+  const [ocrLoading, setOcrLoading] = useState(false)
+  const [ocrError, setOcrError] = useState(null)
+  const [isDraggingOver, setIsDraggingOver] = useState(false)
+  const fileInputRef = useRef(null)
   const [startError, setStartError] = useState(null)
   const [chatError, setChatError] = useState(null)
+
+  useEffect(() => {
+    setChecklistItems(loadStorage(STORAGE_KEYS.checklist, []))
+    setSavedNotices(loadStorage(STORAGE_KEYS.savedNotices, []).map(migrateNoticeToThread))
+    const loaded = loadStorage(STORAGE_KEYS.settings, DEFAULT_SETTINGS)
+    if (loaded.clarityPreference === 'step-by-step') {
+      setSettings({ ...loaded, clarityPreference: 'detailed' })
+    } else {
+      setSettings(loaded)
+    }
+    setHydrated(true)
+  }, [])
 
   const activeSavedNotice = savedNotices.find((n) => n.id === activeView)
   const pendingCount = checklistItems.filter((item) => !item.done).length
 
   useEffect(() => {
+    if (!hydrated) return
     localStorage.setItem(STORAGE_KEYS.checklist, JSON.stringify(checklistItems))
-  }, [checklistItems])
+  }, [checklistItems, hydrated])
 
   useEffect(() => {
+    if (!hydrated) return
     localStorage.setItem(STORAGE_KEYS.savedNotices, JSON.stringify(savedNotices))
-  }, [savedNotices])
+  }, [savedNotices, hydrated])
 
   useEffect(() => {
+    if (!hydrated) return
     localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(settings))
-  }, [settings])
+  }, [settings, hydrated])
 
   function navigateTo(view) {
-    setActiveView(view)
     setChatError(null)
     setCopied(false)
+    if (view === 'main') router.push('/')
+    else if (view === 'checklist') router.push('/checklist')
+    else if (view === 'settings') router.push('/settings')
+    else router.push(`/cases/${view}`)
   }
 
   function showToast(message) {
@@ -1334,10 +1552,11 @@ function App() {
       const simplifyPayload = {
         noticeText: noticeText.trim(),
         clarityPreference: settings.clarityPreference,
+        language: settings.language || 'en',
       }
       console.log('[CrisisClear] initial request payload:', simplifyPayload)
 
-      const response = await fetch('http://localhost:3001/api/simplify', {
+      const response = await fetch('/api/simplify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(simplifyPayload),
@@ -1407,12 +1626,13 @@ function App() {
       conversationMessages: messagesForApi(thread.messages),
       userMessage: trimmedMessage,
       clarityPreference: settings.clarityPreference,
+      language: settings.language || 'en',
     }
 
     console.log('[CrisisClear] follow-up request payload:', chatPayload)
 
     try {
-      const response = await fetch('http://localhost:3001/api/chat', {
+      const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(chatPayload),
@@ -1453,7 +1673,7 @@ function App() {
       const details = error instanceof Error ? error.message : 'Unknown error'
       setChatError(
         details.includes('Route not found') || details.includes('404')
-          ? 'Chat endpoint not found. Restart the API server with: npm run server'
+          ? 'Chat endpoint not found. Restart the dev server with: npm run dev'
           : `Could not reach the AI service: ${details}`
       )
     } finally {
@@ -1510,9 +1730,162 @@ function App() {
     setChecklistItems((prev) => prev.filter((item) => item.id !== id))
   }
 
+  async function prioritizeChecklist() {
+    if (prioritizing || checklistItems.length === 0) return
+    setPrioritizing(true)
+    try {
+      const response = await fetch('/api/prioritize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: checklistItems.map((item) => ({
+            id: item.id,
+            text: item.text,
+            source: item.sourceNoticeTitle,
+          })),
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data.details || data.error || 'Failed to prioritize')
+      }
+
+      const rank = new Map((data.ranked || []).map((r) => [r.id, r.priority]))
+      const order = { High: 0, Medium: 1, Low: 2 }
+
+      setChecklistItems((prev) => {
+        const withPriority = prev.map((item) => ({
+          ...item,
+          priority: rank.get(item.id) || item.priority || 'Medium',
+        }))
+        return [...withPriority].sort((a, b) => {
+          if (a.done !== b.done) return a.done ? 1 : -1
+          return (order[a.priority] ?? 1) - (order[b.priority] ?? 1)
+        })
+      })
+      showToast('Checklist prioritized by AI')
+    } catch {
+      showToast('Could not prioritize right now')
+    } finally {
+      setPrioritizing(false)
+    }
+  }
+
+  async function generateBriefing() {
+    if (loadingBriefing || savedNotices.length === 0) return
+    setLoadingBriefing(true)
+    setBriefingError(null)
+    try {
+      const cases = savedNotices.slice(0, 25).map((thread) => {
+        const analysis = getLatestAnalysis(thread) || emptyAnalysis()
+        return {
+          title: thread.title,
+          urgencyLevel: analysis.urgencyLevel,
+          summary: analysis.response,
+          importantDates: analysis.importantDates,
+        }
+      })
+
+      const response = await fetch('/api/briefing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cases, language: settings.language || 'en' }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data.details || data.error || 'Failed to generate briefing')
+      }
+
+      setBriefing({
+        text: data.briefing || '',
+        priorities: Array.isArray(data.topPriorities) ? data.topPriorities : [],
+      })
+    } catch {
+      setBriefingError('Could not generate a briefing right now. Please try again.')
+    } finally {
+      setLoadingBriefing(false)
+    }
+  }
+
+  async function handleOcr(file) {
+    if (!file) return
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'application/pdf']
+    if (!validTypes.includes(file.type)) {
+      setOcrError('Unsupported file type. Please upload an image (JPEG, PNG, WebP) or PDF.')
+      return
+    }
+    if (file.size > 12 * 1024 * 1024) {
+      setOcrError('File too large. Please use an image under 12 MB.')
+      return
+    }
+
+    setOcrLoading(true)
+    setOcrError(null)
+    setStartError(null)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('clarityPreference', settings.clarityPreference)
+      formData.append('language', settings.language || 'en')
+
+      const response = await fetch('/api/ocr', { method: 'POST', body: formData })
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        throw new Error(data.details || data.error || `OCR failed (${response.status})`)
+      }
+
+      if (data.extractedText) {
+        setNoticeText(data.extractedText)
+      }
+
+      if (data.analysis) {
+        const analysis = normalizeAnalysis(data.analysis)
+        if (hasAnalysisContent(analysis)) {
+          const title = analysis.response
+            ? analysis.response.slice(0, 60) + (analysis.response.length > 60 ? '…' : '')
+            : `Document — ${new Date().toLocaleDateString()}`
+          const thread = createThreadFromAnalysis(analysis, data.extractedText || '[Image document]', title)
+          setSavedNotices((prev) => [thread, ...prev])
+          navigateTo(thread.id)
+          return
+        }
+      }
+
+      showToast('Text extracted — review and click Analyse')
+    } catch (err) {
+      setOcrError(err.message || 'Could not read the document. Please try again.')
+    } finally {
+      setOcrLoading(false)
+      setIsDraggingOver(false)
+    }
+  }
+
   function deleteSavedNotice(id) {
     setSavedNotices((prev) => prev.filter((n) => n.id !== id))
-    if (activeView === id) navigateTo('main')
+    if (pathname === `/cases/${id}`) navigateTo('main')
+  }
+
+  if (!hydrated) {
+    return (
+      <div className="workspace" data-theme="light" data-font-size="medium">
+        <div
+          className="content"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: '100vh',
+          }}
+        >
+          <div className="loading card">
+            <div className="loading-spinner" />
+            <p>Loading CrisisClear…</p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -1591,14 +1964,95 @@ function App() {
               <p>Paste a notice to get a breakdown, then continue the conversation in one thread.</p>
             </header>
 
+            {savedNotices.length > 0 && (
+              <section className="briefing-card card">
+                <div className="briefing-head">
+                  <span className="briefing-icon" aria-hidden="true">🧭</span>
+                  <div className="briefing-heading">
+                    <h2 className="briefing-title">AI Daily Briefing</h2>
+                    <p className="briefing-sub">
+                      A calm overview of what needs your attention across {savedNotices.length}{' '}
+                      {savedNotices.length === 1 ? 'case' : 'cases'}.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="briefing-btn"
+                    onClick={generateBriefing}
+                    disabled={loadingBriefing}
+                  >
+                    {loadingBriefing ? 'Thinking…' : briefing ? '↻ Refresh' : '✨ Generate'}
+                  </button>
+                </div>
+
+                {briefingError && <p className="briefing-error">{briefingError}</p>}
+
+                {briefing && (briefing.text || briefing.priorities.length > 0) && (
+                  <div className="briefing-body">
+                    {briefing.text && <p className="briefing-text">{briefing.text}</p>}
+                    {briefing.priorities.length > 0 && (
+                      <ul className="briefing-priorities">
+                        {briefing.priorities.map((item, index) => (
+                          <li key={`priority-${index}`}>
+                            <span className="briefing-priority-dot" aria-hidden="true" />
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </section>
+            )}
+
             <section className="input-section card">
-              <label className="input-label" htmlFor="notice-input">
-                Paste your notice, alert, or letter
-              </label>
+              <div className="input-section-tabs">
+                <span className="input-label">Paste your notice, alert, or letter</span>
+                <span className="input-divider">or</span>
+                <label
+                  className={`ocr-upload-btn${ocrLoading ? ' loading' : ''}${isDraggingOver ? ' drag-over' : ''}`}
+                  htmlFor="ocr-file-input"
+                  onDragOver={(e) => { e.preventDefault(); setIsDraggingOver(true) }}
+                  onDragLeave={() => setIsDraggingOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    setIsDraggingOver(false)
+                    const f = e.dataTransfer.files[0]
+                    if (f) handleOcr(f)
+                  }}
+                  aria-label="Upload document image or PDF for AI text recognition"
+                >
+                  {ocrLoading
+                    ? <><div className="loading-spinner ocr-spinner" aria-hidden="true" /> Reading…</>
+                    : <><span aria-hidden="true">📷</span> Upload image or PDF</>
+                  }
+                </label>
+                <input
+                  id="ocr-file-input"
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png,image/webp,image/gif,application/pdf"
+                  className="sr-only"
+                  disabled={ocrLoading}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    if (f) handleOcr(f)
+                    e.target.value = ''
+                  }}
+                />
+              </div>
+
+              {ocrError && (
+                <div className="ocr-error" role="alert">
+                  <span aria-hidden="true">⚠️</span> {ocrError}
+                  <button type="button" className="ocr-error-dismiss" onClick={() => setOcrError(null)}>✕</button>
+                </div>
+              )}
+
               <textarea
                 id="notice-input"
                 className="notice-input"
-                placeholder="Paste a school closure notice, hospital discharge instructions, government letter, food assistance notice, or any confusing document here…"
+                placeholder="Paste a school closure notice, hospital discharge instructions, government letter, food assistance notice, or any confusing document here… or upload a photo/PDF above."
                 value={noticeText}
                 onChange={(e) => setNoticeText(e.target.value)}
                 rows={10}
@@ -1640,6 +2094,10 @@ function App() {
                     ))}
                   </select>
                 </div>
+                <VoiceButton
+                  onTranscript={(t) => setNoticeText((prev) => prev ? `${prev} ${t}` : t)}
+                  disabled={isProcessing || ocrLoading}
+                />
               </div>
 
               {startError && (
@@ -1681,13 +2139,25 @@ function App() {
 
         {activeView === 'checklist' && (
           <div className="screen checklist-screen">
-            <header className="screen-header">
-              <h1>My Checklist</h1>
-              <p>
-                {checklistItems.length === 0
-                  ? 'Add items from a simplified notice to track your next steps.'
-                  : `${pendingCount} remaining · ${checklistItems.length} total`}
-              </p>
+            <header className="screen-header screen-header-row">
+              <div>
+                <h1>My Checklist</h1>
+                <p>
+                  {checklistItems.length === 0
+                    ? 'Add items from a simplified notice to track your next steps.'
+                    : `${pendingCount} remaining · ${checklistItems.length} total`}
+                </p>
+              </div>
+              {checklistItems.length > 0 && (
+                <button
+                  type="button"
+                  className="action-btn action-btn-primary"
+                  onClick={prioritizeChecklist}
+                  disabled={prioritizing}
+                >
+                  {prioritizing ? 'Prioritizing…' : '✨ Prioritize with AI'}
+                </button>
+              )}
             </header>
 
             {checklistItems.length === 0 ? (
@@ -1710,7 +2180,14 @@ function App() {
                       />
                       <span className="my-checklist-text">{item.text}</span>
                     </label>
-                    <span className="my-checklist-source">{item.sourceNoticeTitle}</span>
+                    <span className="my-checklist-source">
+                      {item.priority && (
+                        <span className={`priority-badge priority-${item.priority.toLowerCase()}`}>
+                          {item.priority}
+                        </span>
+                      )}
+                      {item.sourceNoticeTitle}
+                    </span>
                     <button
                       type="button"
                       className="delete-btn"
@@ -1741,8 +2218,217 @@ function App() {
           />
         )}
       </div>
+
+      <FloatingAssistant clarityPreference={settings.clarityPreference} language={settings.language} />
     </div>
   )
 }
 
-export default App
+const ASSISTANT_CONTEXT =
+  'You are CrisisClear, a general-purpose assistant. The user is asking from the global assistant panel (no specific saved notice is attached). Help them understand confusing notices, letters, alerts, deadlines, and next steps, or answer general questions about how to use CrisisClear.'
+
+const ASSISTANT_SUGGESTIONS = [
+  'How do I get started with a notice?',
+  'What does an urgency level mean?',
+  'Help me understand a government letter',
+]
+
+function FloatingAssistant({ clarityPreference, language }) {
+  const [open, setOpen] = useState(false)
+  const [messages, setMessages] = useState([])
+  const [input, setInput] = useState('')
+  const [isSending, setIsSending] = useState(false)
+  const endRef = useRef(null)
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    if (open) {
+      endRef.current?.scrollIntoView({ behavior: 'smooth' })
+      inputRef.current?.focus()
+    }
+  }, [messages, open, isSending])
+
+  async function send(text) {
+    const trimmed = text.trim()
+    if (!trimmed || isSending) return
+
+    const history = messages.map((m) => ({ role: m.role, content: m.content }))
+    const userMsg = { id: createId(), role: 'user', content: trimmed }
+    setMessages((prev) => [...prev, userMsg])
+    setInput('')
+    setIsSending(true)
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          originalNotice: ASSISTANT_CONTEXT,
+          conversationMessages: history,
+          userMessage: trimmed,
+          clarityPreference,
+          language: language || 'en',
+        }),
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data.details || data.error || `Request failed (${response.status})`)
+      }
+
+      const reply =
+        typeof data.message === 'string'
+          ? data.message
+          : typeof data.response === 'string'
+            ? data.response
+            : ''
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: createId(),
+          role: 'assistant',
+          content: reply.trim() || 'I could not generate a response. Please try again.',
+        },
+      ])
+    } catch (error) {
+      const details = error instanceof Error ? error.message : 'Unknown error'
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: createId(),
+          role: 'assistant',
+          content: `I could not reach the AI service right now. ${details}`,
+        },
+      ])
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  function handleSubmit(e) {
+    e.preventDefault()
+    send(input)
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="assistant-fab"
+        onClick={() => setOpen(true)}
+        aria-label="Open AI assistant"
+      >
+        <span className="assistant-fab-pulse" aria-hidden="true" />
+        <span className="assistant-fab-icon" aria-hidden="true">✨</span>
+        Ask AI
+      </button>
+    )
+  }
+
+  return (
+    <div className="assistant-panel" role="dialog" aria-label="CrisisClear AI assistant">
+      <header className="assistant-header">
+        <span className="assistant-avatar" aria-hidden="true">✨</span>
+        <div className="assistant-heading">
+          <div className="assistant-title">CrisisClear AI</div>
+          <div className="assistant-status">
+            <span className="assistant-status-dot" aria-hidden="true" />
+            Online · ask me anything
+          </div>
+        </div>
+        <button
+          type="button"
+          className="assistant-close"
+          onClick={() => setOpen(false)}
+          aria-label="Close assistant"
+        >
+          ✕
+        </button>
+      </header>
+
+      <div className="assistant-messages" aria-live="polite">
+        {messages.length === 0 && !isSending ? (
+          <div className="assistant-empty">
+            <span className="assistant-empty-icon" aria-hidden="true">🪄</span>
+            <span className="assistant-empty-title">How can I help?</span>
+            <span className="assistant-empty-text">
+              Ask me about a notice, a deadline, or what to do next. I keep things clear and calm.
+            </span>
+            <div className="assistant-suggestions">
+              {ASSISTANT_SUGGESTIONS.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className="assistant-suggestion"
+                  onClick={() => send(s)}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          messages.map((m) => (
+            <div
+              key={m.id}
+              className={`assistant-msg ${m.role === 'user' ? 'assistant-msg-user' : 'assistant-msg-ai'}`}
+            >
+              <div className="assistant-bubble">{m.content}</div>
+            </div>
+          ))
+        )}
+
+        {isSending && (
+          <div className="assistant-msg assistant-msg-ai">
+            <div className="assistant-bubble assistant-typing" aria-label="Assistant is typing">
+              <span />
+              <span />
+              <span />
+            </div>
+          </div>
+        )}
+
+        <div ref={endRef} />
+      </div>
+
+      <form className="assistant-composer" onSubmit={handleSubmit}>
+        <label className="sr-only" htmlFor="assistant-input">
+          Message the AI assistant
+        </label>
+        <textarea
+          id="assistant-input"
+          ref={inputRef}
+          className="assistant-input"
+          placeholder="Ask the AI anything…"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              handleSubmit(e)
+            }
+          }}
+          rows={1}
+          disabled={isSending}
+        />
+        <VoiceButton
+          onTranscript={(t) => setInput((prev) => prev ? `${prev} ${t}` : t)}
+          disabled={isSending}
+        />
+        <button
+          type="submit"
+          className="assistant-send"
+          disabled={!input.trim() || isSending}
+          aria-label="Send message"
+        >
+          ➤
+        </button>
+      </form>
+    </div>
+  )
+}
+
+export default function CrisisClearApp() {
+  return <App />
+}
