@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 
 const STORAGE_KEYS = {
@@ -1880,6 +1881,14 @@ function App() {
           }}
         >
           <div className="loading card">
+            <Image
+              src="/logo.png"
+              alt="CrisisClear"
+              width={160}
+              height={160}
+              className="loading-logo"
+              priority
+            />
             <div className="loading-spinner" />
             <p>Loading CrisisClear…</p>
           </div>
@@ -1896,11 +1905,14 @@ function App() {
     >
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <span className="sidebar-logo" aria-hidden="true">🛡️</span>
-          <div>
-            <div className="sidebar-title">CrisisClear</div>
-            <div className="sidebar-tagline">Action workspace</div>
-          </div>
+          <Image
+            src="/logo.png"
+            alt="CrisisClear"
+            width={168}
+            height={168}
+            className="sidebar-logo-img"
+            priority
+          />
         </div>
 
         <nav className="sidebar-nav">
@@ -2329,7 +2341,14 @@ function FloatingAssistant({ clarityPreference, language }) {
   return (
     <div className="assistant-panel" role="dialog" aria-label="CrisisClear AI assistant">
       <header className="assistant-header">
-        <span className="assistant-avatar" aria-hidden="true">✨</span>
+        <Image
+          src="/logo.png"
+          alt=""
+          width={44}
+          height={44}
+          className="assistant-logo"
+          aria-hidden="true"
+        />
         <div className="assistant-heading">
           <div className="assistant-title">CrisisClear AI</div>
           <div className="assistant-status">

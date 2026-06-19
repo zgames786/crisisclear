@@ -4,6 +4,10 @@ import './globals.css'
 export const metadata = {
   title: 'CrisisClear',
   description: 'Turn confusing notices into clear, actionable guidance.',
+  icons: {
+    icon: '/logo.png',
+    apple: '/logo.png',
+  },
 }
 
 export default function RootLayout({ children }) {
