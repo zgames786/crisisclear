@@ -18,4 +18,4 @@ If you are developing a production application, we recommend using TypeScript wi
 
 ## Website Demo Link
 
-(https://crisisclear.vercel.app/)
+https://crisisclear.vercel.app/
